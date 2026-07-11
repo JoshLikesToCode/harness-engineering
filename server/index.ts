@@ -5,7 +5,7 @@ config({ path: ".dev.vars" });
 import express from "express";
 import { createServer } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
-import { EventBus, createEmitter } from "./bus";
+import { EventBus, createEmitter } from "../harness/bus";
 import { runAgent } from "../harness/runtime";
 import { EventType, type ClientMessage } from "@shared/events";
 
