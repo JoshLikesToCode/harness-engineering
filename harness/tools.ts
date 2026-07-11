@@ -19,41 +19,57 @@ export const tools = {
         .string()
         .describe("The search query to look up in the knowledge base."),
     }),
-    execute: async ({ query }: { query: string }) => {
-      const hits = Object.entries(KNOWLEDGE_BASE)
-        .filter(([key]) => query.toLocaleLowerCase().includes(key))
-        .map(([, articles]) => articles);
-      return {
-        articles: hits.length > 0 ? hits : ["No relevant articles found."],
-      };
-    },
   }),
 
   classifyItem: tool({
     description: "Classify an item into one of the known categories.",
     inputSchema: z.object({
       itemId: z.string(),
-      category: z.enum(["billing", "technicals", "sales", "other"])
+      category: z.enum(["billing", "technicals", "sales", "other"]),
     }),
-    execute: async ({ itemId, category }) => ({ ok:true, itemId, category })
-    }),
+  }),
 
-    draftReply: tool({
-        description: 'Write a draft reply for a work item. Does not send anything.',
-        inputSchema: z.object({
-            itemId: z.string(),
-            message: z.string()
-        }),
-        execute: async({ itemId }) => ({ ok:true, draftId: `draft-${itemId}` })
+  draftReply: tool({
+    description: "Write a draft reply for a work item. Does not send anything.",
+    inputSchema: z.object({
+      itemId: z.string(),
+      message: z.string(),
     }),
+  }),
 
-    sendReply: tool({
-        description: 'Send the drafted reply to the customer. This actually emails them.',
-        inputSchema: z.object({
-            itemId: z.string(),
-            draftId: z.string()
-        }),
-        // DANGEROUS: an irreversible side effect with zero confirmation
-        execute: async({ itemId, draftId }) => ({ sent:true, itemId, draftId })
-    })
+  sendReply: tool({
+    description:
+      "Send the drafted reply to the customer. This actually emails them.",
+    inputSchema: z.object({
+      itemId: z.string(),
+      draftId: z.string(),
+    }),
+  }),
 };
+
+// Extracting out execute steps outside so we can wrap them in
+// a workflow that will make things more durable
+export async function runTool(
+  name: string,
+  args: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  switch (name) {
+    case "searchKnowledgeBase": {
+      const query = String(args.query ?? "").toLowerCase();
+      const hits = Object.entries(KNOWLEDGE_BASE)
+        .filter(([key]) => query.includes(key))
+        .map(([, article]) => article);
+      return {
+        articles: hits.length ? hits : ["No exact match found."],
+      };
+    }
+    case "classifyItem":
+      return { ok: true, itemId: args.itemId, category: args.category };
+    case "draftReply":
+      return { ok: true, draftId: `draft-${args.itemId}` };
+    case "sendReply":
+      return { sent: true, itemId: args.itemId, draftId: args.draftId };
+    default:
+      throw new Error(`unknown tool: ${name}`);
+  }
+}
