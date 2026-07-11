@@ -6,4 +6,4 @@ import { openai } from "@ai-sdk/openai";
 //
 // The provider reads OPENAI_API_KEY from the environment at request time
 // (the server loads it from .dev.vars on startup).
-export const model = openai("gpt-5.5");
+export const model = openai("gpt-5.4-mini");
