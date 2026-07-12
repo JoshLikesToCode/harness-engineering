@@ -27,10 +27,10 @@ export const CHARGES: Record<string, Charge[]> = {
   ],
 };
 
-const sandboxApi : SandboxApi = {
-    getCharges: (customerId: string) => CHARGES[customerId] ?? [],
-    searchKnowledgeBase: async (query: string) => searchKB(query),
-}
+const sandboxApi: SandboxApi = {
+  getCharges: (customerId: string) => CHARGES[customerId] ?? [],
+  searchKnowledgeBase: async (query: string) => searchKB(query),
+};
 
 const KNOWLEDGE_BASE: Record<string, string> = {
   billing:
@@ -49,7 +49,6 @@ export function searchKB(query: string): string[] {
     .map(([, article]) => article);
   return hits.length ? hits : ["No exact match — use your judgment."];
 }
-
 
 export const tools = {
   searchKnowledgeBase: tool({
@@ -87,21 +86,25 @@ export const tools = {
   }),
 
   issueRefund: tool({
-    description: 'Issue a refund to the customer. IRREVERSIBLE - this moves real money.',
+    description:
+      "Issue a refund to the customer. IRREVERSIBLE - this moves real money.",
     inputSchema: z.object({
-        customerId: z.string(),
-        chargeId: z.string(),
-        amountCents: z.number()
-        })
+      customerId: z.string(),
+      chargeId: z.string(),
+      amountCents: z.number(),
     }),
+  }),
 
-   handoff: tool({
-    description: '',
+  handoff: tool({
+    description:
+      "Hand this conversation off to another agent — either a specialist who can " +
+      "do something you can't, or back to triage once your specialized task is " +
+      "done so it can continue with the rest of the queue.",
     inputSchema: z.object({
-        to: z.enum(["billing"]), // agents that can take the hand-off go here
-        reason: z.string()
-    })
-   }),
+      to: z.enum(["triage", "billing"]), // agents that can take the hand-off go here
+      reason: z.string(),
+    }),
+  }),
   // Code Mode: instead of chaining a dozen tool calls (each round-tripping
   // through the model), the agent writes ONE program that fetches and analyzes.
   runCode: tool({
@@ -125,7 +128,7 @@ export async function runTool(
 ): Promise<Record<string, unknown>> {
   switch (name) {
     case "searchKnowledgeBase": {
-        return { articles: searchKB(String(args.query ?? "")) };
+      return { articles: searchKB(String(args.query ?? "")) };
     }
     case "classifyItem":
       return { ok: true, itemId: args.itemId, category: args.category };
@@ -134,16 +137,16 @@ export async function runTool(
     case "sendReply":
       return { sent: true, itemId: args.itemId, draftId: args.draftId };
     case "runCode":
-        return runInSandbox(String(args.code ?? ""), sandboxApi);
+      return runInSandbox(String(args.code ?? ""), sandboxApi);
     case "getCharges":
-        return { charges: CHARGES[String(args.customerId)] ?? [] };
-    case "issureRefund":
-        return {
-            refunded: true,
-            customerId: args.customerId,
-            chargeId: args.chargeId,
-            amountCents: args.amountCents,
-        }
+      return { charges: CHARGES[String(args.customerId)] ?? [] };
+    case "issueRefund":
+      return {
+        refunded: true,
+        customerId: args.customerId,
+        chargeId: args.chargeId,
+        amountCents: args.amountCents,
+      };
     default:
       throw new Error(`unknown tool: ${name}`);
   }

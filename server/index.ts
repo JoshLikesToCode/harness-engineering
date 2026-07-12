@@ -7,6 +7,7 @@ import { createServer } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 import { runAgentWorkflow } from "../harness/runtime";
 import { type ClientMessage } from "@shared/events";
+import { runSupervisorWorkflow } from "../harness/supervisor";
 
 const PORT = Number(process.env.PORT ?? 8787);
 
@@ -56,9 +57,13 @@ async function main() {
       }
 
       if (message.type === "submit_task") {
-        await DBOS.startWorkflow(runAgentWorkflow)({
-          input: message.input,
-        });
+        if (message.mode === "supervised") {
+          await DBOS.startWorkflow(runSupervisorWorkflow)(message.input);
+        } else {
+          await DBOS.startWorkflow(runAgentWorkflow)({
+            input: message.input,
+          });
+        }
       }
     });
     // everything the client missed since being disconnected

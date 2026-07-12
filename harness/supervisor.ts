@@ -56,6 +56,7 @@ async function supervisorWorkflow(task: string): Promise<string> {
 
   // PLAN.
   const plan = await DBOS.runStep(() => makePlan(task), { name: "plan" });
+  // Run plan in step because it only needs to be ran once as part of the workflow
   await DBOS.runStep(
     () => emit({ type: EventType.PlanCreated, workflowId, steps: plan.steps }),
     { name: "plan-emit" },
@@ -97,7 +98,7 @@ async function supervisorWorkflow(task: string): Promise<string> {
       findings.push(result.value);
     } else {
       await DBOS.runStep(
-        () =>
+        () => 
           emit({
             type: EventType.SubagentFailed,
             workflowId,

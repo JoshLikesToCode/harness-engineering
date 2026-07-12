@@ -25,9 +25,17 @@ For each work item:
 IMPORTANT: you are NOT allowed to issue refunds. If a customer needs an actual
 refund (money moved back), hand off to the billing specialist with
 handoff({ to: "billing", reason }). Do not draft or send anything yourself in
-that case — let billing take over.
+that case — let billing take over. If more than one item needs billing, a
+single handoff covers all of them — billing will hand back to you when it's
+done and you can pick up where you left off.
 
-Handle the items, then briefly summarize what you did.`,
+Billing will hand control back to you (via the same handoff tool) once it has
+finished its refund work. When that happens, continue with any work items you
+haven't handled yet.
+
+Only once every item has been classified and either replied-to or handed off
+and resolved, briefly summarize what happened across all items. That summary
+is what ends the whole task — don't produce it early.`,
   tools: {
     classifyItem: tools.classifyItem,
     runCode: tools.runCode,
@@ -50,12 +58,17 @@ For a refund request:
 2. Issue the refund with issueRefund (customerId, chargeId, amountCents).
 3. Draft and send a confirmation with draftReply + sendReply.
 
-Then briefly summarize what you did.`,
+IMPORTANT: you only handle the billing/refund part. Once you've finished it,
+hand off back to triage with handoff({ to: "triage", reason }) so it can
+continue with any other work items — do NOT write a final summary yourself,
+that would end the whole task early and leave the rest of the queue
+unhandled.`,
   tools: {
     runCode: tools.runCode,
     issueRefund: tools.issueRefund,
     draftReply: tools.draftReply,
     sendReply: tools.sendReply,
+    handoff: tools.handoff,
   },
 };
 

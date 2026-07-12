@@ -194,11 +194,16 @@ export async function agentWorkflow(opts: { input: string }): Promise<string> {
       return turn.text;
     }
 
+    // Captured once, before the loop below can mutate currentAgent — every
+    // tool call in this turn was made by the SAME agent (whoever ran
+    // modelTurn above), even if the loop processes multiple handoffs.
+    const turnAgent = currentAgent.name;
+
     for (const call of turn.toolCalls) {
       if (call.toolName == "handoff") {
         const to = String(call.input.to ?? "");
         const reason = String(call.input.reason ?? "");
-        const from = currentAgent.name;
+        const from = turnAgent;
 
         await DBOS.runStep(
           () =>
