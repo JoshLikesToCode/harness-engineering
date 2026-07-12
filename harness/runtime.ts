@@ -2,13 +2,20 @@ import { DBOS } from "@dbos-inc/dbos-sdk";
 import type { ModelMessage, JSONValue } from "ai";
 import { emit } from "./bus";
 import { streamText } from "ai";
-import { randomUUID } from "node:crypto";
 import { EventType } from "@shared/events";
 import { model } from "./model";
 import { tools, runTool } from "./tools";
 import { SYSTEM_PROMPT } from "./system-prompt";
+import {
+  buildContext,
+  summarize,
+  estimateTokens,
+  MAX_CONTEXT_TOKENS,
+  KEEP_CONTEXT_TOKENS,
+} from "./memory";
 
-const MAX_STEPS = 10;
+const MAX_STEPS = 30;
+
 type ToolCall = {
   toolCallId: string;
   toolName: string;
@@ -80,9 +87,7 @@ async function toolStep(
 //
 // Then you spend the rest of the day discovering everything this naive loop
 // gets wrong in production, and building the harness that fixes it.
-export async function agentWorkflow(opts: {
-  input: string;
-}): Promise<string> {
+export async function agentWorkflow(opts: { input: string }): Promise<string> {
   const { input } = opts;
   const workflowId = DBOS.workflowID ?? "unknown";
 
@@ -99,51 +104,51 @@ export async function agentWorkflow(opts: {
     },
   );
 
-  const messages: ModelMessage[] = [
-    { role: "system", content: SYSTEM_PROMPT },
-    { role: "user", content: input },
-  ];
+  let turns: ModelMessage[][] = [];
+  let summary = "";
 
   let step = 0;
   while (step < MAX_STEPS) {
-    const turn = await DBOS.runStep(() => modelTurn(workflowId, messages), {
+    // summarize (if needed) before handing back to model
+    if (estimateTokens(turns.flat()) > MAX_CONTEXT_TOKENS) {
+      const old: ModelMessage[][] = [];
+      while (
+        turns.length > 1 &&
+        estimateTokens(turns.flat()) > KEEP_CONTEXT_TOKENS
+      ) {
+        const oldest = turns.shift();
+        if (oldest) {
+          old.push(oldest);
+        }
+        // do summary
+        if (old.length > 0) {
+          summary = await DBOS.runStep(() => summarize(old, summary), {
+            name: `summarize-${step}`,
+          });
+          const contextTokens = estimateTokens(
+            buildContext(input, summary, turns),
+          );
+          await DBOS.runStep(
+            () =>
+              emit({
+                type: EventType.MemoryCompacted,
+                workflowId,
+                summarizedTurns: old.length,
+                contextTokens,
+                summary,
+              }),
+            { name: `compacted-${step}` },
+          );
+        }
+      }
+    }
+
+    const context = buildContext(input, summary, turns);
+    const turn = await DBOS.runStep(() => modelTurn(workflowId, context), {
       name: `model.turn-${step}`,
     });
+    const turnMessages : ModelMessage[] = [...turn.responseMessages];
 
-    // for streaming results, we emit events as they arrive. The model can ask for
-    // tools, and we can run them and feed the results back to the model.
-    // for await (const part of turn.fullStream) {
-    //   switch (part.type) {
-    //     case "text-delta":
-    //       emit({ type: EventType.ModelDelta, workflowId, text: part.text });
-    //       break;
-    //     case "tool-call":
-    //       emit({
-    //         type: EventType.ToolRequested,
-    //         workflowId,
-    //         toolCallId: part.toolCallId,
-    //         name: part.toolName,
-    //         args: part.input,
-    //       });
-    //       break;
-    //     case "tool-result":
-    //       emit({
-    //         type: EventType.ToolCompleted,
-    //         workflowId,
-    //         toolCallId: part.toolCallId,
-    //         result: part.output,
-    //       });
-    //       break;
-    //     case "error":
-    //       emit({
-    //         type: EventType.WorkflowFailed,
-    //         workflowId,
-    //         error: String(part.error),
-    //       });
-    //       return;
-    //   }
-    // }
-    messages.push(...turn.responseMessages);
     // are there are no tool calls, we are done. The model has finished its work.
     if (turn.toolCalls.length === 0) {
       await DBOS.runStep(
@@ -167,7 +172,7 @@ export async function agentWorkflow(opts: {
       const output = await DBOS.runStep(() => toolStep(workflowId, call), {
         name: `tool-${call.toolCallId}`,
       });
-      messages.push({
+      turnMessages.push({
         role: "tool",
         content: [
           {
@@ -179,7 +184,7 @@ export async function agentWorkflow(opts: {
         ],
       });
     }
-
+    turns.push(turnMessages);
     step++;
   }
   await DBOS.runStep(

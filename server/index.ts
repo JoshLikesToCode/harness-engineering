@@ -1,6 +1,6 @@
 import "./env";
 import { DBOS } from "@dbos-inc/dbos-sdk";
-import { ensureSchema } from "../harness/db";
+import { ensureSchema, clearEventLog } from "../harness/db";
 import { subscribe, history } from "../harness/bus";
 import express from "express";
 import { createServer } from "node:http";
@@ -19,6 +19,18 @@ async function main() {
   await DBOS.launch();
   const app = express();
   app.get("/health", (_req, res) => {
+    res.json({ ok: true });
+  });
+
+  // Set up CORS
+  app.use((_req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    next();
+  });
+
+  // make route to call for clear
+  app.post("/api/clear", async (_req, res) => {
+    await clearEventLog();
     res.json({ ok: true });
   });
 

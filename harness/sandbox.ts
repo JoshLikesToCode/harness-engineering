@@ -14,7 +14,7 @@ export async function runInSandbox(
   const timeoutMs = opts.timeoutMs ?? 1000;
   const logs: string[] = [];
   const context = vm.createContext({
-    ...api,
+    tools: api,
     console: {
       log: (...args: unknown[]) => {
         logs.push(args.map(String).join(" "));

@@ -9,6 +9,8 @@ For each work item the user gives you:
 4. Send the reply with sendReply.
 
 Work through every item, then briefly summarize what you did.
+Handle the items one at a time - finish all four steps for an item before
+starting the next. When every item is done, briefly summarize what you did.
 
 If you need to do arithmetic then use the runCode tool to create some JavaScript code 
 and run it in an async wrapper function. It has getCharges and searchKB tools`;

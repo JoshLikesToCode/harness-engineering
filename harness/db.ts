@@ -27,3 +27,7 @@ export async function ensureSchema() : Promise<void> {
         )
     `
 }
+
+export async function clearEventLog() : Promise<void> {
+    await client `TRUNCATE event_log`;
+}
