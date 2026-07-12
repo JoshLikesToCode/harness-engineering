@@ -4,7 +4,7 @@ import { runInSandbox, type SandboxApi } from "./sandbox";
 
 type Charge = { id: string; amount: number; date: string; description: string };
 
-const CHARGES: Record<string, Charge[]> = {
+export const CHARGES: Record<string, Charge[]> = {
   cus_88121: [
     {
       id: "ch_001",
@@ -42,7 +42,7 @@ const KNOWLEDGE_BASE: Record<string, string> = {
     "Team plans are $20/seat/mo with a volume discount at 25+ seats. For 50+ seats, send the pricing PDF.",
 };
 
-function searchKB(query: string): string[] {
+export function searchKB(query: string): string[] {
   const q = query.toLowerCase();
   const hits = Object.entries(KNOWLEDGE_BASE)
     .filter(([key]) => q.includes(key))
@@ -85,6 +85,23 @@ export const tools = {
       draftId: z.string(),
     }),
   }),
+
+  issueRefund: tool({
+    description: 'Issue a refund to the customer. IRREVERSIBLE - this moves real money.',
+    inputSchema: z.object({
+        customerId: z.string(),
+        chargeId: z.string(),
+        amountCents: z.number()
+        })
+    }),
+
+   handoff: tool({
+    description: '',
+    inputSchema: z.object({
+        to: z.enum(["billing"]), // agents that can take the hand-off go here
+        reason: z.string()
+    })
+   }),
   // Code Mode: instead of chaining a dozen tool calls (each round-tripping
   // through the model), the agent writes ONE program that fetches and analyzes.
   runCode: tool({
@@ -120,6 +137,13 @@ export async function runTool(
         return runInSandbox(String(args.code ?? ""), sandboxApi);
     case "getCharges":
         return { charges: CHARGES[String(args.customerId)] ?? [] };
+    case "issureRefund":
+        return {
+            refunded: true,
+            customerId: args.customerId,
+            chargeId: args.chargeId,
+            amountCents: args.amountCents,
+        }
     default:
       throw new Error(`unknown tool: ${name}`);
   }

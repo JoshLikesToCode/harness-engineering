@@ -22,12 +22,13 @@ export function estimateTokens(messages: ModelMessage[]): number {
 }
 
 export function buildContext(
+  systemPrompt: string,
   task: string,
   summary: string,
   turns: ModelMessage[][],
 ): ModelMessage[] {
   const context: ModelMessage[] = [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: systemPrompt },
     { role: "user", content: task },
   ];
 

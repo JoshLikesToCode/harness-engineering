@@ -1,11 +1,11 @@
 import { DBOS } from "@dbos-inc/dbos-sdk";
-import type { ModelMessage, JSONValue } from "ai";
+import type { ModelMessage, JSONValue, ToolSet } from "ai";
 import { emit } from "./bus";
 import { streamText } from "ai";
 import { EventType } from "@shared/events";
 import { model } from "./model";
-import { tools, runTool } from "./tools";
-import { SYSTEM_PROMPT } from "./system-prompt";
+import { runTool } from "./tools";
+import { triageAgent, agents } from "./agents";
 import {
   buildContext,
   summarize,
@@ -30,8 +30,9 @@ type Turn = {
 async function modelTurn(
   workflowId: string,
   messages: ModelMessage[],
+  agentTools: ToolSet,
 ): Promise<Turn> {
-  const result = streamText({ model, messages, tools });
+  const result = streamText({ model, messages, tools: agentTools });
 
   for await (const part of result.fullStream) {
     if (part.type === "text-delta") {
@@ -72,6 +73,22 @@ async function toolStep(
   return output;
 }
 
+// helper function that takes any value and any tool call and creates a message
+// summarizing the result
+function toolResultMessage(call: ToolCall, value: JSONValue): ModelMessage {
+  return {
+    role: "tool",
+    content: [
+      {
+        type: "tool-result",
+        toolCallId: call.toolCallId,
+        toolName: call.toolName,
+        output: { type: "json", value: "" },
+      },
+    ],
+  };
+}
+
 // This is the seam the whole course lives in.
 //
 // Right now it is a STUB: it announces a workflow, logs that nothing is wired
@@ -104,6 +121,7 @@ export async function agentWorkflow(opts: { input: string }): Promise<string> {
     },
   );
 
+  let currentAgent = triageAgent;
   let turns: ModelMessage[][] = [];
   let summary = "";
 
@@ -126,7 +144,7 @@ export async function agentWorkflow(opts: { input: string }): Promise<string> {
             name: `summarize-${step}`,
           });
           const contextTokens = estimateTokens(
-            buildContext(input, summary, turns),
+            buildContext(currentAgent.systemPrompt, input, summary, turns),
           );
           await DBOS.runStep(
             () =>
@@ -143,11 +161,19 @@ export async function agentWorkflow(opts: { input: string }): Promise<string> {
       }
     }
 
-    const context = buildContext(input, summary, turns);
-    const turn = await DBOS.runStep(() => modelTurn(workflowId, context), {
-      name: `model.turn-${step}`,
-    });
-    const turnMessages : ModelMessage[] = [...turn.responseMessages];
+    const context = buildContext(
+      currentAgent.systemPrompt,
+      input,
+      summary,
+      turns,
+    );
+    const turn = await DBOS.runStep(
+      () => modelTurn(workflowId, context, currentAgent.tools),
+      {
+        name: `model.turn-${step}`,
+      },
+    );
+    const turnMessages: ModelMessage[] = [...turn.responseMessages];
 
     // are there are no tool calls, we are done. The model has finished its work.
     if (turn.toolCalls.length === 0) {
@@ -169,20 +195,42 @@ export async function agentWorkflow(opts: { input: string }): Promise<string> {
     }
 
     for (const call of turn.toolCalls) {
-      const output = await DBOS.runStep(() => toolStep(workflowId, call), {
-        name: `tool-${call.toolCallId}`,
-      });
-      turnMessages.push({
-        role: "tool",
-        content: [
-          {
-            type: "tool-result",
-            toolCallId: call.toolCallId,
-            toolName: call.toolName,
-            output: { type: "json", value: output as JSONValue },
-          },
-        ],
-      });
+      if (call.toolName == "handoff") {
+        const to = String(call.input.to ?? "");
+        const reason = String(call.input.reason ?? "");
+        const from = currentAgent.name;
+
+        await DBOS.runStep(
+          () =>
+            emit({
+              type: EventType.AgentHandoff,
+              workflowId,
+              from,
+              to,
+              reason,
+            }),
+          { name: `handoff-${step}` },
+        );
+        currentAgent = agents[to] ?? currentAgent;
+        turnMessages.push(
+          toolResultMessage(call, { ok: true, handedOffTo: to }),
+        );
+      } else {
+        const output = await DBOS.runStep(() => toolStep(workflowId, call), {
+          name: `tool-${call.toolCallId}`,
+        });
+        turnMessages.push({
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: call.toolCallId,
+              toolName: call.toolName,
+              output: { type: "json", value: output as JSONValue },
+            },
+          ],
+        });
+      }
     }
     turns.push(turnMessages);
     step++;
